@@ -2,41 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* Audio streaming app design system - dark theme with vibrant accents */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Dark audio-focused theme */
+    --background: 220 13% 8%;
+    --foreground: 210 40% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 220 13% 12%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 220 13% 12%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Audio primary - vibrant green */
+    --primary: 142 76% 36%;
+    --primary-foreground: 220 13% 8%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Audio secondary - purple accent */
+    --secondary: 263 70% 50%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 220 13% 16%;
+    --muted-foreground: 215 25% 65%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 263 70% 50%;
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 220 13% 20%;
+    --input: 220 13% 16%;
+    --ring: 142 76% 36%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
+
+    /* Audio-specific design tokens */
+    --audio-active: 142 76% 36%;
+    --audio-inactive: 220 13% 40%;
+    --audio-wave: 263 70% 50%;
+    --audio-glow: 142 76% 36%;
+    
+    /* Gradients */
+    --gradient-audio: linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(263 70% 50%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(220 13% 12%) 0%, hsl(220 13% 8%) 100%);
+    --gradient-glow: radial-gradient(circle at center, hsl(142 76% 36% / 0.3) 0%, transparent 70%);
+    
+    /* Shadows and effects */
+    --shadow-audio: 0 10px 40px hsl(142 76% 36% / 0.2);
+    --shadow-card: 0 8px 32px hsl(220 13% 4% / 0.3);
+    --shadow-glow: 0 0 60px hsl(142 76% 36% / 0.4);
+    
+    /* Animations */
+    --animation-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    --animation-wave: wave 1.5s ease-in-out infinite;
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
 
@@ -100,6 +124,53 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-hidden;
+  }
+}
+
+@layer components {
+  /* Audio-specific animations */
+  @keyframes wave {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(1.5); }
+  }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  
+  @keyframes audioGlow {
+    0%, 100% { box-shadow: var(--shadow-audio); }
+    50% { box-shadow: var(--shadow-glow); }
+  }
+  
+  /* Audio components */
+  .audio-card {
+    @apply bg-card border border-border rounded-lg;
+    background: var(--gradient-card);
+    box-shadow: var(--shadow-card);
+    transition: var(--transition-smooth);
+  }
+  
+  .audio-button {
+    @apply relative overflow-hidden;
+    background: var(--gradient-audio);
+    box-shadow: var(--shadow-audio);
+    transition: var(--transition-smooth);
+  }
+  
+  .audio-button:hover {
+    animation: audioGlow 2s ease-in-out infinite;
+  }
+  
+  .audio-wave {
+    @apply bg-secondary;
+    animation: var(--animation-wave);
+  }
+  
+  .audio-active {
+    @apply text-primary;
+    filter: drop-shadow(0 0 8px hsl(var(--audio-glow) / 0.5));
   }
 }
