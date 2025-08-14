@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://SuhelNaryal.github.io/pc-to-ear/",
+  "homepage": "https://suhelnaryal.github.io/pc-to-ear",
   "scripts": {
     "dev": "vite",
     "dev:https": "npm run generate-certs && vite",
