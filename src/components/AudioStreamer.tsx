@@ -1,12 +1,22 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
-import { Mic, MicOff, Volume2, VolumeX, Smartphone, Monitor, Wifi, WifiOff, QrCode, Copy, CheckCircle, Users, Radio } from 'lucide-react';
+import { Volume2, VolumeX, Smartphone, Monitor, Wifi, WifiOff, QrCode, Copy, CheckCircle, Users, Radio, Speaker, AlertCircle } from 'lucide-react';
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { QRCodeGenerator } from './QRCodeGenerator';
-import { SimpleAudioStreamingService } from '@/services/SimpleAudioStreamingService';
+import StreamingService from '@/services/StreamingService';
 
 export const AudioStreamer = () => {
   const [isStreaming, setIsStreaming] = useState(false);
@@ -20,149 +30,75 @@ export const AudioStreamer = () => {
   const [connectionUrl, setConnectionUrl] = useState('');
   const [roomId, setRoomId] = useState('');
   const [isReceiver, setIsReceiver] = useState(false);
-  
-  const streamingService = useRef<SimpleAudioStreamingService | null>(null);
+  const [showAudioHelp, setShowAudioHelp] = useState(false);
+  const [audioSource, setAudioSource] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState('');
+  const [streamingService, setStreamingService] = useState<StreamingService | null>(null);
   const audioLevelInterval = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    // Initialize streaming service
-    streamingService.current = new SimpleAudioStreamingService();
-    
-    // Check if this is a receiver (has room parameter)
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomParam = urlParams.get('room');
-    
-    if (roomParam) {
-      setIsReceiver(true);
-      setDeviceType('mobile');
-      // Auto-join as receiver
-      joinAsReceiver();
-    } else {
-      // Detect device type for new sessions
-      const isMobile = window.innerWidth < 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      setDeviceType(isMobile ? 'mobile' : 'pc');
+  const startStreaming = (force: boolean = false) => {
+    const remoteAudio = new Audio();
+    remoteAudio.autoplay = true;
+    // Check if this is a receiver (has room ID in hash)
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const roomId = hashParams.get('r');
+    if (!roomId && !force) {
+      return;
     }
 
-    // Set up connection state monitoring
-    streamingService.current?.onConnectionChange((connected) => {
-      setIsConnected(connected);
-      if (connected) {
-        toast({
-          title: "Devices connected!",
-          description: "Audio streaming is now active between devices",
-        });
-      }
-    });
+    const isReceiver = !!roomId;
+    setIsReceiver(isReceiver);
+    // setRoomId(roomId || '');
 
-    return () => {
-      if (audioLevelInterval.current) {
-        clearInterval(audioLevelInterval.current);
-      }
-      streamingService.current?.stopStreaming();
-    };
-  }, []);
-
-  useEffect(() => {
-    // Update volume and mute on streaming service
-    if (streamingService.current) {
-      streamingService.current.setVolume(volume[0]);
-      streamingService.current.mute(isMuted);
-    }
-  }, [volume, isMuted]);
-
-  const joinAsReceiver = async () => {
-    try {
-      await streamingService.current?.joinAsReceiver();
-      toast({
-        title: "Waiting for connection",
-        description: "Ready to receive audio from PC",
-      });
-    } catch (error) {
-      toast({
-        title: "Connection failed",
-        description: "Could not connect to audio source",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const startAudioStreaming = async () => {
-    try {
-      if (!streamingService.current) return;
-      
-      const result = await streamingService.current.startStreaming();
-      
+    const onReady = (roomId : string) => {
+      // setIsConnected(!isReceiver);
       setIsStreaming(true);
-      setConnectionUrl(result.connectionUrl);
-      setRoomId(result.roomId);
-      
-      // Start simulated audio level monitoring
-      startAudioLevelMonitoring();
-      
-      toast({
-        title: "Audio streaming started",
-        description: "Share the connection URL or QR code with your other device",
-      });
-      
-    } catch (error) {
-      toast({
-        title: "Error starting stream",
-        description: "Please check your microphone permissions and try again",
-        variant: "destructive",
-      });
+      setRoomId(roomId);
+      setConnectionUrl(`${window.location.href}#r=${roomId}`);
     }
-  };
 
-  const stopAudioStreaming = () => {
-    streamingService.current?.stopStreaming();
-    
-    setIsStreaming(false);
-    setIsConnected(false);
-    setAudioLevel(0);
-    
-    if (audioLevelInterval.current) {
-      clearInterval(audioLevelInterval.current);
-    }
-    
-    toast({
-      title: "Audio streaming stopped",
-      description: "Stream has been terminated",
-    });
-  };
+    const onStream = (mediaStream: MediaStream) => {
+      setIsConnected(true);
+      if(isReceiver) {
+        setAudioSource(mediaStream.getAudioTracks()[0].label);
+        setIsStreaming(true);
 
-  const startAudioLevelMonitoring = () => {
-    // Simulate audio level for visual feedback
-    audioLevelInterval.current = setInterval(() => {
-      if (isStreaming) {
-        // Generate realistic audio level simulation
-        const baseLevel = 0.2 + Math.random() * 0.6;
-        const variation = Math.sin(Date.now() / 200) * 0.1;
-        setAudioLevel(Math.max(0, Math.min(1, baseLevel + variation)));
+        const audioTracks = mediaStream.getAudioTracks();
+        if (!audioTracks.length) {
+          throw new Error('No audio track in received stream');
+        }
+
+        const audioContext = new (window.AudioContext /*|| (window as any).webkitAudioContext*/)();
+        // await audioContext.resume();
+        // Create and play a silent buffer to ensure we have permission
+        const buffer = audioContext.createBuffer(1, 1, 22050);
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContext.destination);
+        source.start(0);
+
+        remoteAudio.srcObject = mediaStream;
+        remoteAudio.play();
       }
-    }, 100);
-  };
-
-  const toggleStreaming = () => {
-    if (isStreaming) {
-      stopAudioStreaming();
-    } else {
-      startAudioStreaming();
     }
-  };
 
-  const toggleMute = () => {
-    setIsMuted(!isMuted);
-    toast({
-      title: isMuted ? "Audio unmuted" : "Audio muted",
-      description: `Audio is now ${isMuted ? 'enabled' : 'disabled'}`,
-    });
-  };
+    const onError = (error: any) => {
+      setErrorMessage(error.message || 'An error occurred while connecting');
+    }
+    // Initialize streaming service
+    const service = new StreamingService(roomId, onReady, onStream, onError);
+
+    setStreamingService(service);
+
+  }
+
+  useEffect(startStreaming, []);
 
   const copyConnectionUrl = async () => {
-    const urlToCopy = connectionUrl || streamingService.current?.getConnectionUrl() || window.location.href;
     try {
-      await navigator.clipboard.writeText(urlToCopy);
+      await navigator.clipboard.writeText(connectionUrl);
       setCopiedUrl(true);
       setTimeout(() => setCopiedUrl(false), 2000);
       toast({
@@ -178,9 +114,29 @@ export const AudioStreamer = () => {
     }
   };
 
+  const toggleStreaming = async () => {
+    if (isStreaming) {
+      streamingService?.disconnect();
+    } else {
+      setShowAudioHelp(true);
+    }
+  }
+
   const getCurrentUrl = () => {
-    return connectionUrl || streamingService.current?.getConnectionUrl() || window.location.href;
+    return connectionUrl || window.location.href;
   };
+
+  useEffect(() => {
+    if (!isStreaming && !isReceiver) {
+      setConnectionStatus('');
+    } else if (isStreaming && !isConnected) {
+      setConnectionStatus('Waiting for device to connect...');
+    } else if (isReceiver && !isConnected) {
+      setConnectionStatus('Connecting to audio source...');
+    } else if (isConnected) {
+      setConnectionStatus('Connected and streaming audio');
+    }
+  }, [isStreaming, isConnected, isReceiver]);
 
   return (
     <div className="min-h-screen p-4 md:p-8 flex items-center justify-center">
@@ -211,13 +167,28 @@ export const AudioStreamer = () => {
             </Badge>
           </div>
 
+          {/* Connection Status Message */}
+          {connectionStatus && (
+            <div className="mb-4 p-3 bg-primary/10 rounded-lg">
+              <div className="flex items-center gap-2">
+                {isConnected ? (
+                  <CheckCircle className="w-4 h-4 text-primary animate-pulse" />
+                ) : (
+                  <div className="w-4 h-4 rounded-full bg-primary/50 animate-pulse" />
+                )}
+                <span className="text-sm">{connectionStatus}</span>
+              </div>
+            </div>
+          )}
+          
+
           {/* Room ID Display */}
           {(isStreaming || isReceiver) && (
             <div className="mb-4 p-3 bg-muted/20 rounded-lg">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Room ID:</span>
-                <code className="text-sm text-primary">{roomId || streamingService.current?.getRoomId()}</code>
+                <code className="text-sm text-primary">{roomId}</code>
               </div>
             </div>
           )}
@@ -255,13 +226,13 @@ export const AudioStreamer = () => {
               >
                 {isStreaming ? (
                   <>
-                    <MicOff className="w-5 h-5 mr-2" />
+                    <Speaker className="w-5 h-5 mr-2" />
                     Stop Streaming
                   </>
                 ) : (
                   <>
-                    <Mic className="w-5 h-5 mr-2" />
-                    Start Streaming
+                    <Speaker className="w-5 h-5 mr-2" />
+                    Share Audio
                   </>
                 )}
               </Button>
@@ -276,7 +247,7 @@ export const AudioStreamer = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={toggleMute}
+                  // onClick={toggleMute}
                   className="h-8 w-8 p-0"
                 >
                   {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -361,12 +332,24 @@ export const AudioStreamer = () => {
         {isReceiver && !isConnected && (
           <Card className="audio-card p-4">
             <div className="text-center space-y-3">
-              <Radio className="w-8 h-8 mx-auto text-primary animate-pulse" />
+              <div className="relative">
+                <Radio className="w-8 h-8 mx-auto text-primary animate-pulse" />
+                {/* Connection animation rings */}
+                <div className="absolute inset-0 w-8 h-8 mx-auto rounded-full border-2 border-primary/20 animate-ping" />
+                <div className="absolute inset-0 w-8 h-8 mx-auto rounded-full border-2 border-primary/20 animate-ping" style={{ animationDelay: '0.5s' }} />
+              </div>
               <div>
-                <h3 className="font-medium mb-1">Waiting for Connection</h3>
-                <p className="text-sm text-muted-foreground">
-                  Make sure audio streaming is started on your PC
-                </p>
+                <h3 className="font-medium mb-2">Connecting...</h3>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Make sure on your PC:
+                  </p>
+                  <ul className="text-xs text-muted-foreground text-left list-disc list-inside space-y-1">
+                    <li>Audio streaming is started</li>
+                    <li>A window/tab with audio is shared</li>
+                    <li>Audio sharing is enabled in the popup</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </Card>
@@ -387,6 +370,69 @@ export const AudioStreamer = () => {
             <div className="text-xs text-muted-foreground">Sample Rate</div>
           </Card>
         </div>
+
+        {/* Audio Help Dialog */}
+        <AlertDialog open={showAudioHelp} onOpenChange={setShowAudioHelp}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {errorMessage?.includes('secure context') ? 'Security Requirements' : 'Select Audio Source'}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-4">
+                {errorMessage?.includes('secure context') ? (
+                  <>
+                    <p>For security reasons, audio sharing requires either:</p>
+                    <ul className="list-disc list-inside space-y-2">
+                      <li>A secure HTTPS connection, or</li>
+                      <li>Running on localhost</li>
+                    </ul>
+                    <p>Please access this app via:</p>
+                    <code className="block p-2 bg-muted rounded">
+                      {window.location.protocol === 'https:' 
+                        ? window.location.href 
+                        : `https://${window.location.host}`}
+                    </code>
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                      <AlertCircle className="w-4 h-4 text-primary" />
+                      <span className="text-sm">
+                        Or run it locally and access via{' '}
+                        <code className="px-1 bg-background">http://localhost:5173</code>
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p>To share your PC audio:</p>
+                    <ol className="list-decimal list-inside space-y-2">
+                      <li>Click "Share System Audio" below</li>
+                      <li>In the popup, select "Chrome Tab" or "Window"</li>
+                      <li>Make sure "Share audio" is checked</li>
+                      <li>Select the window/tab playing audio</li>
+                      <li>Click "Share"</li>
+                    </ol>
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                      <AlertCircle className="w-4 h-4 text-primary" />
+                      <span className="text-sm">
+                        Tip: Choose the application or browser tab that's playing the audio you want to share
+                      </span>
+                    </div>
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowAudioHelp(false)}>
+                {errorMessage?.includes('secure context') ? 'Close' : 'Cancel'}
+              </AlertDialogCancel>
+              {!errorMessage?.includes('secure context') && (
+                <AlertDialogAction onClick={() => (startStreaming(true))}>
+                  <Speaker className="w-4 h-4 mr-2" />
+                  Share System Audio
+                </AlertDialogAction>
+              )}
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
