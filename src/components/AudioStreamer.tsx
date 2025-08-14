@@ -35,7 +35,7 @@ export const AudioStreamer = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState('');
   const [streamingService, setStreamingService] = useState<StreamingService | null>(null);
-  const audioLevelInterval = useRef<NodeJS.Timeout | null>(null);
+  // const audioLevelInterval = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
   const startStreaming = (force: boolean = false) => {
